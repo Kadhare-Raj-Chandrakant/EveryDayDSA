@@ -10,8 +10,8 @@ pipeline:
 
 ingestion:
   leetcode:
-    # LeetCode GraphQL API endpoint
-    api_url: "https://leetcode.com/graphql"
+    # alfa-leetcode-api REST endpoint (no auth needed)
+    api_url: "https://alfa-leetcode-api.onrender.com"
     # Request timeout in seconds
     timeout: 30
   backlog:

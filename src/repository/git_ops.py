@@ -67,13 +67,9 @@ class GitManager:
             log.info("Nothing to commit — all files already tracked")
             return False
 
-        # Commit
+        # Commit — author identity comes from git config (set in CI workflow)
         commit_msg = problem.commit_message()
-        self._run_git(
-            "-c", f"user.name={self.author_name}",
-            "-c", f"user.email={self.author_email}",
-            "commit", "-m", commit_msg,
-        )
+        self._run_git("commit", "-m", commit_msg)
         log.info("Committed: %s", commit_msg)
 
         # Determine push remote
@@ -107,11 +103,18 @@ class GitManager:
         return False
 
     def setup_git_config(self) -> None:
-        """Ensure git user config is set (for environments without it)."""
+        """Ensure git user config is set for the current actor.
+
+        Uses GITHUB_ACTOR env var (set automatically in GitHub Actions)
+        so the commit appears under the triggering user's name.
+        Falls back to the configured author_name/email.
+        """
+        actor = os.environ.get("GITHUB_ACTOR", self.author_name)
+        email = f"{actor}@users.noreply.github.com" if os.environ.get("GITHUB_ACTOR") else self.author_email
         try:
-            self._run_git("config", "user.name", self.author_name)
-            self._run_git("config", "user.email", self.author_email)
-            log.debug("Git user config set")
+            self._run_git("config", "user.name", actor)
+            self._run_git("config", "user.email", email)
+            log.debug("Git user config set to %s <%s>", actor, email)
         except RuntimeError:
             log.warning("Could not set git user config")
 

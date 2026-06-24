@@ -1,15 +1,17 @@
 # GitHubGreenCard — Daily DSA Auto-Solve Pipeline
-# Runs every day at 01:00 UTC via cron.
-# Triggered automatically in the GitHub Actions runner context.
+# Runs every day at a random time within your chosen windows:
+#   Window 1: 00:00-03:00 UTC (midnight-3am)
+#   Window 2: 06:00-12:00 UTC (6am-noon)
+# Picks one window at random each day.
+# Commit author = the user who triggered the run.
 
 name: Daily DSA Solve
 
 on:
   schedule:
-    # At 01:00 UTC every day — you can change this later
-    - cron: "0 1 * * *"
+    # Run at midnight UTC every day — the random sleep shifts it into the window
+    - cron: "0 0 * * *"
   workflow_dispatch:
-    # Allow manual trigger for testing
     inputs:
       dry_run:
         description: "Dry run (no git push)"
@@ -22,9 +24,23 @@ permissions:
 jobs:
   solve:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Max delay (12h) + pipeline (~3 min) + buffer
+    timeout-minutes: 780
 
     steps:
+      - name: Randomize start time
+        run: |
+          python -c "
+import random, time
+window = random.randint(0, 1)
+if window == 0:
+    delay = random.randint(0, 10800)    # 0-3h  (midnight-3am UTC)
+else:
+    delay = random.randint(21600, 43200) # 6-12h (6am-noon UTC)
+print(f'Window {window}: sleeping {delay}s ({delay//3600}h {delay%3600//60}m)')
+time.sleep(delay)
+"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -40,16 +56,14 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Configure Git
+      - name: Configure Git (use triggering user's identity)
         run: |
-          git config user.name "GitHubGreenCard Bot"
-          git config user.email "bot@githubgreencard.dev"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
 
       - name: Run pipeline
         env:
-          # NVIDIA NIM API key — free at https://build.nvidia.com (starts with nvapi-)
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          # Fallback: OpenAI API key (only if not using NVIDIA NIM)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}

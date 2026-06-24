@@ -19,6 +19,12 @@ build/
 # Output (tracked via git — LeetCode solutions are the product)
 # LeetCode/  # Uncomment to ignore solutions locally if needed
 
+# Builder memory artifacts (not needed for pipeline)
+startup-builder-memory/
+
+# Virtual environment
+.venv/
+
 # OS
 .DS_Store
 Thumbs.db

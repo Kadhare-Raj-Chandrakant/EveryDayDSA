@@ -51,7 +51,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Configure Git (use triggering user's identity)
+      - name: Configure Git — commits appear as the triggering user
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"

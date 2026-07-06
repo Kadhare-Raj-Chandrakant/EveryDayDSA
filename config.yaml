@@ -45,10 +45,9 @@ repository:
   git:
     # Branch to push to
     branch: "main"
-    # Author name for commits
-    author_name: "GitHubGreenCard Bot"
-    # Author email for commits
-    author_email: "bot@githubgreencard.dev"
+    # Author identity — in CI, this is overridden by GITHUB_ACTOR
+    author_name: ""
+    author_email: ""
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

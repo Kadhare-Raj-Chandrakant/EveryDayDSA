@@ -179,8 +179,8 @@ def deploy(problem: "ProblemContext", config: dict) -> bool:
     repo_config = config.get("repository", {}).get("git", {})
     git_mgr = GitManager(
         branch=repo_config.get("branch", "main"),
-        author_name=repo_config.get("author_name", "GitHubGreenCard Bot"),
-        author_email=repo_config.get("author_email", "bot@githubgreencard.dev"),
+        author_name=repo_config.get("author_name", ""),
+        author_email=repo_config.get("author_email", ""),
     )
 
     # In GitHub Actions, set up git config
@@ -323,10 +323,11 @@ def run(config: dict) -> int:
         if noise:
             file_path, msg = noise
             try:
+                repo_config = config.get("repository", {}).get("git", {})
                 git_mgr = GitManager(
-                    branch=config.get("repository", {}).get("git", {}).get("branch", "main"),
-                    author_name="GitHubGreenCard Bot",
-                    author_email="bot@githubgreencard.dev",
+                    branch=repo_config.get("branch", "main"),
+                    author_name=repo_config.get("author_name", ""),
+                    author_email=repo_config.get("author_email", ""),
                 )
                 if os.environ.get("GITHUB_ACTIONS") == "true":
                     git_mgr.setup_git_config()

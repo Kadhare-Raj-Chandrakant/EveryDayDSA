@@ -99,3 +99,30 @@ class StructureManager:
             "scala": ".scala",
         }
         return extensions.get(language.lower(), f".{language}")
+
+
+def get_solved_slugs(output_root: str = "LeetCode") -> set[str]:
+    """Scan the output directory for previously solved problem slugs.
+
+    Folder names follow the pattern ``YYYY-MM-DD-kebab-title``.
+    Extracts the kebab-case title slug (everything after the ISO date prefix).
+
+    Returns:
+        A set of kebab-case slugs, e.g. ``{'two-sum', 'maximum-subarray'}``.
+        Empty set if the directory does not exist or contains no solutions.
+    """
+    root = Path(output_root)
+    if not root.is_dir():
+        return set()
+
+    slugs: set[str] = set()
+    # Folder format: YYYY-MM-DD-kebab-title → strip "YYYY-MM-DD-" (11 chars)
+    for entry in root.iterdir():
+        if entry.is_dir():
+            name = entry.name
+            # ISO date is 10 chars + hyphen = 11 chars prefix
+            if len(name) > 11 and name[4] == "-" and name[7] == "-":
+                slug = name[11:]  # Strip the date prefix
+                if slug:
+                    slugs.add(slug)
+    return slugs

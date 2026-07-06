@@ -55,34 +55,114 @@ class LeetCodeFetcher(ProblemFetcher):
             ),
         })
 
-    def fetch(self) -> ProblemContext:
-        """Fetch a random LeetCode problem with full metadata."""
-        # Step 1: get total problem count
-        log.info("Finding random LeetCode problem...")
+    def fetch(self, exclude_slugs: set[str] | None = None) -> ProblemContext:
+        """Fetch a random unsolved LeetCode problem with full metadata.
+
+        Args:
+            exclude_slugs: Set of kebab-case title slugs to exclude (already solved).
+
+        Returns:
+            A ProblemContext for a previously unsolved problem.
+
+        Raises:
+            IngestionError: If no unsolved problems could be found after retries.
+        """
+        exclude = exclude_slugs or set()
+        log.info("Finding random LeetCode problem (excluding %d solved)...", len(exclude))
         total = self._get_total_problems()
         log.debug("Total problems available: %d", total)
 
-        # Step 2: pick random offset and fetch a page
-        max_skip = max(0, total - self.page_size)
-        skip = random.randint(0, max_skip)
-        problems = self._list_problems(skip=skip)
-        log.debug("Fetched %d problems at offset %d", len(problems), skip)
+        # Retry with different pages until we find an unsolved problem
+        max_retries = 10
+        for attempt in range(max_retries):
+            max_skip = max(0, total - self.page_size)
+            skip = random.randint(0, max_skip)
+            problems = self._list_problems(skip=skip)
+            log.debug("Fetched %d problems at offset %d (attempt %d/%d)",
+                      len(problems), skip, attempt + 1, max_retries)
 
-        if not problems:
-            raise IngestionError("No problems found in listing")
+            if not problems:
+                continue
 
-        # Filter out paid-only problems
-        free_problems = [p for p in problems if not p.get("isPaidOnly")]
-        if not free_problems:
-            raise IngestionError("All problems in this page are paid-only")
+            # Filter out paid-only and already-solved problems
+            candidates = [
+                p for p in problems
+                if not p.get("isPaidOnly")
+                and p.get("titleSlug") not in exclude
+            ]
+            if candidates:
+                chosen = random.choice(candidates)
+                title_slug = chosen["titleSlug"]
+                log.info("Selected: %s (%s)", chosen["title"], chosen["difficulty"])
+                return self.fetch_by_slug(title_slug)
 
-        # Step 3: pick one at random
-        chosen = random.choice(free_problems)
-        title_slug = chosen["titleSlug"]
-        log.info("Selected: %s (%s)", chosen["title"], chosen["difficulty"])
+            log.debug("All problems on this page are already solved — retrying...")
 
-        # Step 4: fetch full details
-        return self.fetch_by_slug(title_slug)
+        raise IngestionError(
+            f"No unsolved problems found after {max_retries} attempts. "
+            f"Either all available problems have been solved, or the remaining "
+            f"ones are paid-only."
+        )
+
+    def fetch_multiple(
+        self,
+        count: int,
+        exclude_slugs: set[str] | None = None,
+    ) -> list[ProblemContext]:
+        """Fetch multiple distinct unsolved problems in one batch.
+
+        More efficient than calling ``fetch()`` N times — fetches a larger
+        page of listings once, then picks ``count`` distinct unsolved problems.
+
+        Args:
+            count: Number of problems to fetch.
+            exclude_slugs: Set of already-solved title slugs to exclude.
+
+        Returns:
+            List of ``ProblemContext`` objects, one per problem.
+
+        Raises:
+            IngestionError: If fewer than ``count`` unsolved problems are found.
+        """
+        exclude = exclude_slugs or set()
+        log.info("Fetching %d problems (excluding %d solved)...", count, len(exclude))
+
+        # Fetch a large listing to find enough candidates
+        total = self._get_total_problems()
+        fetch_size = max(self.page_size * 3, count * 5)
+        max_skip = max(0, total - fetch_size)
+
+        for attempt in range(5):
+            skip = random.randint(0, max_skip)
+            problems = self._list_problems(limit=fetch_size, skip=skip)
+
+            candidates = [
+                p for p in problems
+                if not p.get("isPaidOnly")
+                and p.get("titleSlug") not in exclude
+            ]
+            if len(candidates) >= count:
+                chosen = random.sample(candidates, count)
+                results: list[ProblemContext] = []
+                for c in chosen:
+                    slug = c["titleSlug"]
+                    log.info("Selected: %s (%s)", c["title"], c["difficulty"])
+                    ctx = self.fetch_by_slug(slug)
+                    # Mark as solved so subsequent problems don't re-pick
+                    exclude.add(slug)
+                    results.append(ctx)
+                return results
+
+            log.debug(
+                "Only %d/%d candidates found (attempt %d/5) — retrying...",
+                len(candidates), count, attempt + 1,
+            )
+
+        raise IngestionError(
+            f"Could not find {count} unsolved problems after 5 attempts. "
+            f"Only {len([p for p in problems if not p.get('isPaidOnly')])} "
+            f"free problems remain available."
+        )
 
     def _get_total_problems(self) -> int:
         """Get the total number of problems available."""
@@ -98,12 +178,12 @@ class LeetCodeFetcher(ProblemFetcher):
         except requests.RequestException as e:
             raise IngestionError(f"Failed to get problem count: {e}") from e
 
-    def _list_problems(self, skip: int = 0) -> list[dict]:
+    def _list_problems(self, skip: int = 0, limit: int | None = None) -> list[dict]:
         """Fetch a page of problems from the listing endpoint."""
         try:
             resp = self.session.get(
                 f"{self.api_url}/problems",
-                params={"limit": self.page_size, "skip": skip},
+                params={"limit": limit or self.page_size, "skip": skip},
                 timeout=self.timeout,
             )
             resp.raise_for_status()

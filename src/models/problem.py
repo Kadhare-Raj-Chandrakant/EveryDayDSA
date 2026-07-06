@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import random
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from enum import Enum
 from typing import Optional
 
@@ -67,16 +68,50 @@ class ProblemContext:
     def commit_message(self) -> str:
         """Generate a human-like commit message.
 
-        Picks from a variety of templates so messages don't look
-        auto-generated. Avoids bot markers like "Docs:" or "Auto-solve".
+        Picks from a broad set of templates so messages look naturally varied
+        across different commits. Avoids bot markers like "Docs:" or "Auto-solve".
         """
-        import random
+        msg = self.title
+        diff = self.difficulty.value
         templates = [
-            f"Solve {self.title}",
-            f"Solution for {self.title}",
-            f"LeetCode: {self.title}",
-            f"Add solution: {self.title}",
-            f"{self.title} — {self.difficulty.value}",
+            # Plain statements
+            f"Solve {msg}",
+            f"Solution for {msg}",
+            f"Add solution: {msg}",
+            f"Solved {msg}",
+            # Casual
+            f"{msg} — done",
+            f"{msg} sorted",
+            f"Finally got {msg}",
+            f"Another one: {msg}",
+            f"{msg} solved",
+            # With difficulty
+            f"{msg} ({diff})",
+            f"LeetCode {diff}: {msg}",
+            f"Solve {msg} [{diff}]",
+            f"[{diff}] {msg}",
+            # "LeetCode" prefix
+            f"LeetCode: {msg}",
+            f"LeetCode — {msg}",
+            f"LC: {msg}",
+            # "Daily" / journal-like
+            f"Daily solve: {msg}",
+            f"Today: {msg}",
+            f"Morning grind: {msg}",
+            f"Evening commit: {msg}",
+            f"DSA: {msg}",
+            # Source-referential
+            f"{msg} — LeetCode",
+            f"leetcode: {msg}",
+            f"Problem: {msg}",
+            # Minimal
+            f"add: {msg}",
+            f"feat: {msg}",
+            f"update: {msg}",
+            # "solution" variants
+            f"Solution: {msg}",
+            f"Add {msg} solution",
+            f"{msg} solution added",
         ]
         return random.choice(templates)
 

@@ -4,9 +4,11 @@
 
 pipeline:
   # Target programming language for solutions
-  language: "cpp"
+  language: "java"
   # Output root directory under repo
   output_root: "LeetCode"
+  # Max solutions to generate per run (1-10; configurable via MAX_COMMITS env var)
+  max_commits_per_run: 5
 
 ingestion:
   leetcode:
@@ -16,6 +18,11 @@ ingestion:
     timeout: 30
     # How many problems to fetch per page when picking randomly
     page_size: 50
+  alt_leetcode:
+    # noworneverev/leetcode-api Vercel-hosted — second-chance live source
+    enabled: true
+    api_url: "https://leetcode-api-pied.vercel.app"
+    timeout: 30
   backlog:
     # Path to local backlog JSON file
     file_path: "backlog.json"
@@ -43,10 +50,9 @@ repository:
   git:
     # Branch to push to
     branch: "main"
-    # Author name for commits
-    author_name: "GitHubGreenCard Bot"
-    # Author email for commits
-    author_email: "bot@githubgreencard.dev"
+    # Author identity — in CI, this is overridden by GITHUB_ACTOR
+    author_name: ""
+    author_email: ""
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

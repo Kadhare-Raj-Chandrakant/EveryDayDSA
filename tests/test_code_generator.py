@@ -12,7 +12,8 @@ class TestCodeGenerator:
         self.mock_llm.generate.return_value = "int main() { return 0; }"
         self.generator = CodeGenerator(self.mock_llm)
 
-    def test_generate_code_calls_llm(self):
+    @patch("src.execution.code_generator.random.random", return_value=1.0)
+    def test_generate_code_calls_llm(self, mock_random):
         """Code generation should call the LLM client with correct params."""
         problem = ProblemContext(
             title="Two Sum",
@@ -63,3 +64,36 @@ class TestCodeGenerator:
         # Prompt no longer includes boilerplate directly — it now instructs
         # the LLM to produce the class Solution block itself
         assert "class Solution" in prompt
+
+    def test_generate_code_brute_force_uses_higher_temp(self):
+        """Forced brute-force should call LLM with higher temperature."""
+        problem = ProblemContext(
+            title="Two Sum",
+            difficulty=Difficulty.EASY,
+            description="Find two numbers that add to target.",
+            constraints="2 <= n <= 10^4",
+            examples=[{"input": "[1,2,3], 5", "output": "[1,2]"}],
+            boilerplate="class Solution {};",
+            language="cpp",
+        )
+        self.mock_llm.generate.return_value = "int main() { return 0; }"
+        self.generator.generate_code(problem, force_brute_force=True)
+        call_kwargs = self.mock_llm.generate.call_args[1]
+        assert call_kwargs["temperature"] == 0.5
+
+    def test_generate_code_brute_force_drops_efficiency(self):
+        """Forced brute-force should not mention efficiency requirements."""
+        problem = ProblemContext(
+            title="Two Sum",
+            difficulty=Difficulty.EASY,
+            description="Find two numbers that add to target.",
+            constraints="2 <= n <= 10^4",
+            examples=[{"input": "[1,2,3], 5", "output": "[1,2]"}],
+            boilerplate="class Solution {};",
+            language="cpp",
+        )
+        self.mock_llm.generate.return_value = "int main() { return 0; }"
+        self.generator.generate_code(problem, force_brute_force=True)
+        call_kwargs = self.mock_llm.generate.call_args[1]
+        user = call_kwargs["user_prompt"].lower()
+        assert "efficiency requirement" not in user

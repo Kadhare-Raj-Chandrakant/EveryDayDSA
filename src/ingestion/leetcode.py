@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import random
 import re
+import time
 from typing import Any
 
 import requests
@@ -54,59 +55,155 @@ class LeetCodeFetcher(ProblemFetcher):
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             ),
         })
+        self.max_retries_429 = 3
 
-    def fetch(self) -> ProblemContext:
-        """Fetch a random LeetCode problem with full metadata."""
-        # Step 1: get total problem count
-        log.info("Finding random LeetCode problem...")
+    def _get_with_retry(self, url: str, params: dict | None = None) -> requests.Response:
+        """GET with exponential backoff on 429 rate limit.
+
+        Retries up to ``max_retries_429`` times with 2, 4, 8 second delays.
+        All other HTTP errors propagate immediately.
+        """
+        for attempt in range(self.max_retries_429):
+            resp = self.session.get(url, params=params, timeout=self.timeout)
+            if resp.status_code == 429:
+                wait = 2 ** attempt
+                log.warning(
+                    "Rate limited (429) on %s — retry %d/%d in %ds",
+                    url, attempt + 1, self.max_retries_429, wait,
+                )
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp
+        raise IngestionError(
+            f"Rate limited on {url} after {self.max_retries_429} retries."
+        )
+
+    def fetch(self, exclude_slugs: set[str] | None = None) -> ProblemContext:
+        """Fetch a random unsolved LeetCode problem with full metadata.
+
+        Args:
+            exclude_slugs: Set of kebab-case title slugs to exclude (already solved).
+
+        Returns:
+            A ProblemContext for a previously unsolved problem.
+
+        Raises:
+            IngestionError: If no unsolved problems could be found after retries.
+        """
+        exclude = exclude_slugs or set()
+        log.info("Finding random LeetCode problem (excluding %d solved)...", len(exclude))
         total = self._get_total_problems()
         log.debug("Total problems available: %d", total)
 
-        # Step 2: pick random offset and fetch a page
-        max_skip = max(0, total - self.page_size)
-        skip = random.randint(0, max_skip)
-        problems = self._list_problems(skip=skip)
-        log.debug("Fetched %d problems at offset %d", len(problems), skip)
+        # Retry with different pages until we find an unsolved problem
+        max_retries = 10
+        for attempt in range(max_retries):
+            max_skip = max(0, total - self.page_size)
+            skip = random.randint(0, max_skip)
+            problems = self._list_problems(skip=skip)
+            log.debug("Fetched %d problems at offset %d (attempt %d/%d)",
+                      len(problems), skip, attempt + 1, max_retries)
 
-        if not problems:
-            raise IngestionError("No problems found in listing")
+            if not problems:
+                continue
 
-        # Filter out paid-only problems
-        free_problems = [p for p in problems if not p.get("isPaidOnly")]
-        if not free_problems:
-            raise IngestionError("All problems in this page are paid-only")
+            # Filter out paid-only and already-solved problems
+            candidates = [
+                p for p in problems
+                if not p.get("isPaidOnly")
+                and p.get("titleSlug") not in exclude
+            ]
+            if candidates:
+                chosen = random.choice(candidates)
+                title_slug = chosen["titleSlug"]
+                log.info("Selected: %s (%s)", chosen["title"], chosen["difficulty"])
+                return self.fetch_by_slug(title_slug)
 
-        # Step 3: pick one at random
-        chosen = random.choice(free_problems)
-        title_slug = chosen["titleSlug"]
-        log.info("Selected: %s (%s)", chosen["title"], chosen["difficulty"])
+            log.debug("All problems on this page are already solved — retrying...")
 
-        # Step 4: fetch full details
-        return self.fetch_by_slug(title_slug)
+        raise IngestionError(
+            f"No unsolved problems found after {max_retries} attempts. "
+            f"Either all available problems have been solved, or the remaining "
+            f"ones are paid-only."
+        )
+
+    def fetch_multiple(
+        self,
+        count: int,
+        exclude_slugs: set[str] | None = None,
+    ) -> list[ProblemContext]:
+        """Fetch multiple distinct unsolved problems in one batch.
+
+        More efficient than calling ``fetch()`` N times — fetches a larger
+        page of listings once, then picks ``count`` distinct unsolved problems.
+
+        Args:
+            count: Number of problems to fetch.
+            exclude_slugs: Set of already-solved title slugs to exclude.
+
+        Returns:
+            List of ``ProblemContext`` objects, one per problem.
+
+        Raises:
+            IngestionError: If fewer than ``count`` unsolved problems are found.
+        """
+        exclude = exclude_slugs or set()
+        log.info("Fetching %d problems (excluding %d solved)...", count, len(exclude))
+
+        # Fetch a large listing to find enough candidates
+        total = self._get_total_problems()
+        fetch_size = max(self.page_size * 3, count * 5)
+        max_skip = max(0, total - fetch_size)
+
+        for attempt in range(5):
+            skip = random.randint(0, max_skip)
+            problems = self._list_problems(limit=fetch_size, skip=skip)
+
+            candidates = [
+                p for p in problems
+                if not p.get("isPaidOnly")
+                and p.get("titleSlug") not in exclude
+            ]
+            if len(candidates) >= count:
+                chosen = random.sample(candidates, count)
+                results: list[ProblemContext] = []
+                for c in chosen:
+                    slug = c["titleSlug"]
+                    log.info("Selected: %s (%s)", c["title"], c["difficulty"])
+                    ctx = self.fetch_by_slug(slug)
+                    # Mark as solved so subsequent problems don't re-pick
+                    exclude.add(slug)
+                    results.append(ctx)
+                return results
+
+            log.debug(
+                "Only %d/%d candidates found (attempt %d/5) — retrying...",
+                len(candidates), count, attempt + 1,
+            )
+
+        raise IngestionError(
+            f"Could not find {count} unsolved problems after 5 attempts. "
+            f"Only {len([p for p in problems if not p.get('isPaidOnly')])} "
+            f"free problems remain available."
+        )
 
     def _get_total_problems(self) -> int:
         """Get the total number of problems available."""
         try:
-            resp = self.session.get(
-                f"{self.api_url}/problems",
-                params={"limit": 1},
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
+            resp = self._get_with_retry(f"{self.api_url}/problems", params={"limit": 1})
             data = resp.json()
             return data.get("totalQuestions", 0)
         except requests.RequestException as e:
             raise IngestionError(f"Failed to get problem count: {e}") from e
 
-    def _list_problems(self, skip: int = 0) -> list[dict]:
+    def _list_problems(self, skip: int = 0, limit: int | None = None) -> list[dict]:
         """Fetch a page of problems from the listing endpoint."""
         try:
-            resp = self.session.get(
+            resp = self._get_with_retry(
                 f"{self.api_url}/problems",
-                params={"limit": self.page_size, "skip": skip},
-                timeout=self.timeout,
+                params={"limit": limit or self.page_size, "skip": skip},
             )
-            resp.raise_for_status()
             data = resp.json()
             return data.get("problemsetQuestionList", [])
         except requests.RequestException as e:
@@ -116,12 +213,10 @@ class LeetCodeFetcher(ProblemFetcher):
         """Fetch a specific problem by its slug (e.g., 'two-sum') with full metadata."""
         log.info("Fetching problem by slug: %s", title_slug)
         try:
-            resp = self.session.get(
+            resp = self._get_with_retry(
                 f"{self.api_url}/select/raw",
                 params={"titleSlug": title_slug},
-                timeout=self.timeout,
             )
-            resp.raise_for_status()
             data = resp.json()
             return self._parse_problem(data.get("question", data))
         except requests.RequestException as e:

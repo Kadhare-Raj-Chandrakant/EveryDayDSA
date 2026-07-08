@@ -1,6 +1,15 @@
 # GitHubGreenCard — Daily DSA Auto-Solve Pipeline
-# Runs every day at 02:00 UTC (adjust the cron to your preference).
 # Author = the user who triggered the run.
+#
+# CRON SCHEDULE: defaults to 02:00 UTC. For more realistic time-variance,
+# add additional cron lines at different hours. Only one will actually
+# execute per day (the run gates itself with a hash of the date), so you
+# won't get multiple commits from a single day's triggers.
+#
+# Example:
+#   - cron: "0 2 * * 1,3,5"   # 02:00 UTC Mon/Wed/Fri
+#   - cron: "0 8 * * 2,4"     # 08:00 UTC Tue/Thu
+#   - cron: "0 14 * * 0,6"    # 14:00 UTC Sat/Sun
 
 name: Daily DSA Solve
 
@@ -13,6 +22,10 @@ on:
         description: "Dry run (no git push)"
         type: boolean
         default: false
+      max_commits:
+        description: "Number of commits (1-10)"
+        type: number
+        default: 5
 
 permissions:
   contents: write
@@ -20,7 +33,7 @@ permissions:
 jobs:
   solve:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -38,7 +51,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Configure Git (use triggering user's identity)
+      - name: Configure Git — commits appear as the triggering user
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
@@ -49,4 +62,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
+          MAX_COMMITS: ${{ github.event.inputs.max_commits || '5' }}
         run: python -m src.main

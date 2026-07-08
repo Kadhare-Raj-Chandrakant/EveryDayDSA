@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from src.models.problem import ProblemContext, Difficulty
-from src.repository.structure import StructureManager
+from src.repository.structure import StructureManager, get_solved_slugs
 
 
 class TestStructureManager:
@@ -54,3 +54,36 @@ class TestStructureManager:
         assert StructureManager._language_extension("java") == ".java"
         assert StructureManager._language_extension("go") == ".go"
         assert StructureManager._language_extension("unknown") == ".unknown"
+
+
+class TestGetSolvedSlugs:
+    def test_empty_directory(self):
+        """Non-existent directory returns empty set."""
+        assert get_solved_slugs("/nonexistent/path") == set()
+
+    def test_returns_solved_slugs(self):
+        """Folder names should be parsed into kebab-case slugs."""
+        tmpdir = Path(tempfile.mkdtemp())
+        (tmpdir / "2026-06-24-two-sum").mkdir()
+        (tmpdir / "2026-06-25-maximum-subarray").mkdir()
+
+        slugs = get_solved_slugs(str(tmpdir))
+        assert slugs == {"two-sum", "maximum-subarray"}
+
+    def test_ignores_non_date_folders(self):
+        """Folders that don't match date pattern should be ignored."""
+        tmpdir = Path(tempfile.mkdtemp())
+        (tmpdir / "2026-06-24-two-sum").mkdir()
+        (tmpdir / "README.md").write_text("")
+        (tmpdir / "config.yaml").write_text("")
+
+        slugs = get_solved_slugs(str(tmpdir))
+        assert slugs == {"two-sum"}
+
+    def test_handles_missing_date_prefix(self):
+        """Short folder names without date prefix are ignored."""
+        tmpdir = Path(tempfile.mkdtemp())
+        (tmpdir / "abc").mkdir()
+
+        slugs = get_solved_slugs(str(tmpdir))
+        assert slugs == set()

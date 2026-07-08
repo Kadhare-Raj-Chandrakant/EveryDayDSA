@@ -102,6 +102,61 @@ class GitManager:
         log.error("All %d push attempts failed: %s", _MAX_PUSH_RETRIES, last_error)
         return False
 
+    def commit_and_push_path(self, file_path: str, commit_msg: str) -> bool:
+        """Stage, commit, and push a specific file path with a custom message.
+
+        Used for noise commits and other non-LeetCode changes.
+
+        Args:
+            file_path: Relative path to the file(s) to stage.
+            commit_msg: Custom commit message.
+
+        Returns:
+            True if push succeeded, False if nothing to commit.
+        """
+        target = self.repo_path / file_path
+        if not target.exists():
+            log.warning("Noise target does not exist: %s", target)
+            return False
+
+        self._run_git("add", str(target))
+        log.debug("Staged: %s", target)
+
+        status = self._run_git("status", "--porcelain")
+        if not status.strip():
+            log.info("Nothing to commit — all files already tracked")
+            return False
+
+        self._run_git("commit", "-m", commit_msg)
+        log.info("Committed: %s", commit_msg)
+
+        remote = self._get_authenticated_remote() or "origin"
+
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            if self._pull_rebase(remote):
+                log.debug("Remote is up to date after rebase pull")
+            else:
+                log.warning("Rebase pull failed — will try push anyway")
+
+        last_error = None
+        for attempt in range(1, _MAX_PUSH_RETRIES + 1):
+            try:
+                self._run_git("push", remote, self.branch)
+                log.info("Pushed to %s/%s (attempt %d/%d)", remote, self.branch, attempt, _MAX_PUSH_RETRIES)
+                return True
+            except RuntimeError as e:
+                last_error = e
+                if attempt < _MAX_PUSH_RETRIES:
+                    delay = _PUSH_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning(
+                        "Push attempt %d/%d failed — retrying in %ds: %s",
+                        attempt, _MAX_PUSH_RETRIES, delay, e,
+                    )
+                    time.sleep(delay)
+
+        log.error("All %d push attempts failed: %s", _MAX_PUSH_RETRIES, last_error)
+        return False
+
     def setup_git_config(self) -> None:
         """Ensure git user config is set for the current actor.
 

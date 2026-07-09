@@ -119,6 +119,7 @@ class AltLeetCodeFetcher(ProblemFetcher):
             except requests.ConnectionError as e:
                 log.debug("Connection error on %s — retry %d/%d", url, attempt + 1, self.max_retries_429)
                 time.sleep(2 ** attempt)
+
                 continue
 
             if resp.status_code in (429, 502, 503, 504):

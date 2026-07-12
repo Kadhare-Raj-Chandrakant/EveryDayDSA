@@ -68,6 +68,7 @@ class CodeGenerator:
         """Generate solution code for the given problem.
 
         Args:
+
             problem: The problem context from ingestion (must include boilerplate + hints).
             force_brute_force: If True, force suboptimal/brute-force solution.
                 If None, decides randomly (~22% chance).

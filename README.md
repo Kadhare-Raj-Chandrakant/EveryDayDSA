@@ -5,10 +5,8 @@
 ## How It Works
 
 ```
-Every day at 02:00 UTC (adjustable in the workflow cron):
-
-  1. Pick a random free LeetCode problem
-  2. Generate a C++ solution via NVIDIA NIM (meta/llama-3.1-70b-instruct)
+  1. Pick a random LeetCode problem
+  2. write a C++ solution via NVIDIA NIM (meta/llama-3.1-70b-instruct)
   3. Write a humanized dev journal via a lighter LLM (nvidia/nemotron-mini-4b-instruct)
   4. Save to LeetCode/YYYY-MM-DD-title/{solution.cpp, README.md}
   5. Commit and push to GitHub (author = the triggering user)

@@ -59,7 +59,6 @@ class ProblemContext:
 
     def folder_name(self) -> str:
         """Generate the standardized folder name for this problem.
-
         Format: YYYY-MM-DD-Problem-Name (kebab-case)
         """
         kebab = re.sub(r"[^a-zA-Z0-9]+", "-", self.title.strip()).strip("-").lower()

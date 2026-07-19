@@ -9,7 +9,6 @@ from datetime import date
 from enum import Enum
 from typing import Optional
 
-
 class Difficulty(str, Enum):
     EASY = "Easy"
     MEDIUM = "Medium"

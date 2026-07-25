@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 
 from src.models.problem import ProblemContext
 
-
 class ProblemFetcher(ABC):
     """Abstract interface for all problem ingestion sources."""
 

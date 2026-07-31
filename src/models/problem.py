@@ -1,7 +1,6 @@
 """Problem data model — the core contract across all pipeline stages."""
 
 from __future__ import annotations
-
 import random
 import re
 from dataclasses import dataclass, field

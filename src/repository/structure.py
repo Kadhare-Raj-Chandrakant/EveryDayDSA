@@ -56,6 +56,7 @@ class StructureManager:
         filepath = folder / "README.md"
 
         # Prepend problem metadata header
+
         header = self._build_header(problem)
         content = header + "\n\n" + doc
 

@@ -302,4 +302,5 @@ class LeetCodeFetcher(ProblemFetcher):
         )
         if match:
             return LeetCodeFetcher._strip_html(match.group(1))
+
         return ""

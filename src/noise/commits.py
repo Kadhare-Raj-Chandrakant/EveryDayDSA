@@ -15,7 +15,6 @@ log = logging.getLogger(__name__)
 # Probability of making a noise commit in a given run (in addition to solves)
 _NOISE_PROBABILITY = 0.35
 
-
 def _read_and_write(path: Path) -> int:
     """Make a small cosmetic change to a text file. Returns number of bytes changed."""
     if not path.exists():
